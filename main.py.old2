@@ -41,7 +41,7 @@ DB_CONFIG = {
     "port": 1433,
     "database": "akp_test",
     "username": "sa",
-    "password": "Md5189md5189@321#"
+    "password": "xxxxxxxx"
 }
 
 # ===== SQL CONNECTION =====
