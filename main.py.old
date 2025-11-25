@@ -33,7 +33,7 @@ DB_CONFIG = {
     "server": "196.216.49.238",
     "database": "akp_test",
     "username": "sa",
-    "password": "Md5189md5189@321#",
+    "password": "xxxxxxx",
     "port": 1433
 }
 
