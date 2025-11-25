@@ -24,7 +24,7 @@ app = FastAPI(title="Employee Transaction Sync API")
 # ===== AUTH CONFIG =====
 security = HTTPBasic()
 API_USER = "admin"
-API_PASS = "Md5189md5189"
+API_PASS = "xxxx"
 JWT_TOKEN = "ey.........oQi98"
 
 def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
@@ -48,7 +48,7 @@ DB_CONFIG = {
     "port": 1433,
     "database": "akp_test",
     "username": "sa",
-    "password": "Md5189md5189@321#"
+    "password": "xxxxxxxx"
 }
 
 # ===== SQL CONNECTION =====
