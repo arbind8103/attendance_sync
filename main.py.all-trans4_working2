@@ -38,7 +38,7 @@ DB_CONFIG = {
     "port": 1433,
     "database": "akp_test",
     "username": "sa",
-    "password": "Md5189md5189@321#"
+    "password": "xxxxxxx"
 }
 
 PAGE_SIZE = 200
