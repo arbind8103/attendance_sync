@@ -1,0 +1,230 @@
+2025-11-13 06:57:16,769 - INFO - Tables initialized successfully.
+2025-11-13 06:57:19,451 - INFO - Fetching transactions from 2025-10-14 to 2025-11-13...
+2025-11-13 07:20:36,353 - INFO - Fetched 133468 transactions
+2025-11-13 08:06:48,937 - INFO - Tables initialized successfully.
+2025-11-13 08:07:34,239 - INFO - Tables initialized successfully.
+2025-11-13 08:08:12,599 - INFO - Fetching transactions from 2025-10-14 to 2025-11-13...
+2025-11-13 08:10:55,191 - INFO - Fetched 15157 transactions
+2025-11-13 08:17:30,759 - INFO - Tables initialized successfully.
+2025-11-13 08:17:35,336 - INFO - Fetching transactions from 2025-10-14 to 2025-11-13...
+2025-11-13 08:18:07,517 - ERROR - Failed to fetch transactions: HTTPConnectionPool(host='196.216.49.238', port=8801): Max retries exceeded with url: /iclock/api/transactions/?start_date=2025-10-14&end_date=2025-11-13&page=18&page_size=200 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x7f258eb8ad20>, 'Connection to 196.216.49.238 timed out. (connect timeout=15)'))
+Traceback (most recent call last):
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/urllib3/connection.py", line 198, in _new_conn
+    sock = connection.create_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/urllib3/util/connection.py", line 85, in create_connection
+    raise err
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/urllib3/util/connection.py", line 73, in create_connection
+    sock.connect(sa)
+TimeoutError: timed out
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/urllib3/connectionpool.py", line 787, in urlopen
+    response = self._make_request(
+               ^^^^^^^^^^^^^^^^^^^
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/urllib3/connectionpool.py", line 493, in _make_request
+    conn.request(
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/urllib3/connection.py", line 494, in request
+    self.endheaders()
+  File "/home/aktechnical/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/http/client.py", line 1333, in endheaders
+    self._send_output(message_body, encode_chunked=encode_chunked)
+  File "/home/aktechnical/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/http/client.py", line 1093, in _send_output
+    self.send(msg)
+  File "/home/aktechnical/.local/share/uv/python/cpython-3.12.12-linux-x86_64-gnu/lib/python3.12/http/client.py", line 1037, in send
+    self.connect()
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/urllib3/connection.py", line 325, in connect
+    self.sock = self._new_conn()
+                ^^^^^^^^^^^^^^^^
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/urllib3/connection.py", line 207, in _new_conn
+    raise ConnectTimeoutError(
+urllib3.exceptions.ConnectTimeoutError: (<urllib3.connection.HTTPConnection object at 0x7f258eb8ad20>, 'Connection to 196.216.49.238 timed out. (connect timeout=15)')
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/requests/adapters.py", line 644, in send
+    resp = conn.urlopen(
+           ^^^^^^^^^^^^^
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/urllib3/connectionpool.py", line 841, in urlopen
+    retries = retries.increment(
+              ^^^^^^^^^^^^^^^^^^
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/urllib3/util/retry.py", line 519, in increment
+    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+urllib3.exceptions.MaxRetryError: HTTPConnectionPool(host='196.216.49.238', port=8801): Max retries exceeded with url: /iclock/api/transactions/?start_date=2025-10-14&end_date=2025-11-13&page=18&page_size=200 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x7f258eb8ad20>, 'Connection to 196.216.49.238 timed out. (connect timeout=15)'))
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/aktechnical/attendance_sync/main.py", line 162, in fetch_data
+    tdata = fetch_paginated_data(API_TRANSACTIONS_URL, auth=(API_USER, API_PASS), params=params)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aktechnical/attendance_sync/main.py", line 124, in fetch_paginated_data
+    resp = requests.get(url, auth=auth, headers=headers, params=p, timeout=timeout)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/requests/api.py", line 73, in get
+    return request("get", url, params=params, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/requests/api.py", line 59, in request
+    return session.request(method=method, url=url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/requests/sessions.py", line 589, in request
+    resp = self.send(prep, **send_kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/requests/sessions.py", line 703, in send
+    r = adapter.send(request, **kwargs)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/requests/adapters.py", line 665, in send
+    raise ConnectTimeout(e, request=request)
+requests.exceptions.ConnectTimeout: HTTPConnectionPool(host='196.216.49.238', port=8801): Max retries exceeded with url: /iclock/api/transactions/?start_date=2025-10-14&end_date=2025-11-13&page=18&page_size=200 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x7f258eb8ad20>, 'Connection to 196.216.49.238 timed out. (connect timeout=15)'))
+2025-11-13 08:18:07,524 - ERROR - Fetching data failed: HTTPConnectionPool(host='196.216.49.238', port=8801): Max retries exceeded with url: /iclock/api/transactions/?start_date=2025-10-14&end_date=2025-11-13&page=18&page_size=200 (Caused by ConnectTimeoutError(<urllib3.connection.HTTPConnection object at 0x7f258eb8ad20>, 'Connection to 196.216.49.238 timed out. (connect timeout=15)'))
+2025-11-13 08:29:45,150 - INFO - Tables initialized successfully.
+2025-11-13 08:30:06,734 - INFO - Fetching transactions from 2025-10-14 to 2025-11-13...
+2025-11-13 08:32:43,556 - INFO - Fetched 15162 transactions
+2025-11-13 08:32:43,933 - ERROR - Fetching data failed: 401 Client Error: Unauthorized for url: http://196.216.49.238:8801/personnel/api/employees/?page=1&page_size=100
+2025-11-13 08:36:42,852 - INFO - Tables initialized successfully.
+2025-11-13 08:36:45,091 - INFO - Fetching transactions from 2025-10-14 to 2025-11-13
+2025-11-13 08:36:46,304 - INFO - Fetched page 1 (200 records), total so far: 200
+2025-11-13 08:36:47,256 - INFO - Fetched page 2 (200 records), total so far: 400
+2025-11-13 08:36:48,316 - INFO - Fetched page 3 (200 records), total so far: 600
+2025-11-13 08:36:49,368 - INFO - Fetched page 4 (200 records), total so far: 800
+2025-11-13 08:36:50,525 - INFO - Fetched page 5 (200 records), total so far: 1000
+2025-11-13 08:36:51,512 - INFO - Fetched page 6 (200 records), total so far: 1200
+2025-11-13 08:36:52,595 - INFO - Fetched page 7 (200 records), total so far: 1400
+2025-11-13 08:36:53,758 - INFO - Fetched page 8 (200 records), total so far: 1600
+2025-11-13 08:36:54,848 - INFO - Fetched page 9 (200 records), total so far: 1800
+2025-11-13 08:36:55,823 - INFO - Fetched page 10 (200 records), total so far: 2000
+2025-11-13 08:36:56,885 - INFO - Fetched page 11 (200 records), total so far: 2200
+2025-11-13 08:36:57,942 - INFO - Fetched page 12 (200 records), total so far: 2400
+2025-11-13 08:36:58,971 - INFO - Fetched page 13 (200 records), total so far: 2600
+2025-11-13 08:37:00,047 - INFO - Fetched page 14 (200 records), total so far: 2800
+2025-11-13 08:37:01,069 - INFO - Fetched page 15 (200 records), total so far: 3000
+2025-11-13 08:37:02,087 - INFO - Fetched page 16 (200 records), total so far: 3200
+2025-11-13 08:37:03,048 - INFO - Fetched page 17 (200 records), total so far: 3400
+2025-11-13 08:37:04,098 - INFO - Fetched page 18 (200 records), total so far: 3600
+2025-11-13 08:37:05,054 - INFO - Fetched page 19 (200 records), total so far: 3800
+2025-11-13 08:37:06,031 - INFO - Fetched page 20 (200 records), total so far: 4000
+2025-11-13 08:37:07,093 - INFO - Fetched page 21 (200 records), total so far: 4200
+2025-11-13 08:37:08,157 - INFO - Fetched page 22 (200 records), total so far: 4400
+2025-11-13 08:37:09,222 - INFO - Fetched page 23 (200 records), total so far: 4600
+2025-11-13 08:37:10,188 - INFO - Fetched page 24 (200 records), total so far: 4800
+2025-11-13 08:37:11,148 - INFO - Fetched page 25 (200 records), total so far: 5000
+2025-11-13 08:37:12,304 - INFO - Fetched page 26 (200 records), total so far: 5200
+2025-11-13 08:37:13,439 - INFO - Fetched page 27 (200 records), total so far: 5400
+2025-11-13 08:37:14,425 - INFO - Fetched page 28 (200 records), total so far: 5600
+2025-11-13 08:37:15,500 - INFO - Fetched page 29 (200 records), total so far: 5800
+2025-11-13 08:37:16,499 - INFO - Fetched page 30 (200 records), total so far: 6000
+2025-11-13 08:37:17,483 - INFO - Fetched page 31 (200 records), total so far: 6200
+2025-11-13 08:37:18,656 - INFO - Fetched page 32 (200 records), total so far: 6400
+2025-11-13 08:37:19,734 - INFO - Fetched page 33 (200 records), total so far: 6600
+2025-11-13 08:37:20,759 - INFO - Fetched page 34 (200 records), total so far: 6800
+2025-11-13 08:37:22,330 - INFO - Fetched page 35 (200 records), total so far: 7000
+2025-11-13 08:37:23,842 - INFO - Fetched page 36 (200 records), total so far: 7200
+2025-11-13 08:37:25,557 - INFO - Fetched page 37 (200 records), total so far: 7400
+2025-11-13 08:37:27,225 - INFO - Fetched page 38 (200 records), total so far: 7600
+2025-11-13 08:37:29,419 - INFO - Fetched page 39 (200 records), total so far: 7800
+2025-11-13 08:37:30,970 - INFO - Fetched page 40 (200 records), total so far: 8000
+2025-11-13 08:37:32,692 - INFO - Fetched page 41 (200 records), total so far: 8200
+2025-11-13 08:37:34,382 - INFO - Fetched page 42 (200 records), total so far: 8400
+2025-11-13 08:37:36,184 - INFO - Fetched page 43 (200 records), total so far: 8600
+2025-11-13 08:37:37,819 - INFO - Fetched page 44 (200 records), total so far: 8800
+2025-11-13 08:37:39,226 - INFO - Fetched page 45 (200 records), total so far: 9000
+2025-11-13 08:37:40,788 - INFO - Fetched page 46 (200 records), total so far: 9200
+2025-11-13 08:37:42,489 - INFO - Fetched page 47 (200 records), total so far: 9400
+2025-11-13 08:37:44,253 - INFO - Fetched page 48 (200 records), total so far: 9600
+2025-11-13 08:37:45,951 - INFO - Fetched page 49 (200 records), total so far: 9800
+2025-11-13 08:37:47,644 - INFO - Fetched page 50 (200 records), total so far: 10000
+2025-11-13 08:37:49,273 - INFO - Fetched page 51 (200 records), total so far: 10200
+2025-11-13 08:37:51,775 - INFO - Fetched page 52 (200 records), total so far: 10400
+2025-11-13 08:37:53,391 - INFO - Fetched page 53 (200 records), total so far: 10600
+2025-11-13 08:37:55,002 - INFO - Fetched page 54 (200 records), total so far: 10800
+2025-11-13 08:37:56,544 - INFO - Fetched page 55 (200 records), total so far: 11000
+2025-11-13 08:37:58,060 - INFO - Fetched page 56 (200 records), total so far: 11200
+2025-11-13 08:37:59,637 - INFO - Fetched page 57 (200 records), total so far: 11400
+2025-11-13 08:38:01,348 - INFO - Fetched page 58 (200 records), total so far: 11600
+2025-11-13 08:38:03,444 - INFO - Fetched page 59 (200 records), total so far: 11800
+2025-11-13 08:38:04,917 - INFO - Fetched page 60 (200 records), total so far: 12000
+2025-11-13 08:38:06,512 - INFO - Fetched page 61 (200 records), total so far: 12200
+2025-11-13 08:38:08,269 - INFO - Fetched page 62 (200 records), total so far: 12400
+2025-11-13 08:38:09,877 - INFO - Fetched page 63 (200 records), total so far: 12600
+2025-11-13 08:38:11,588 - INFO - Fetched page 64 (200 records), total so far: 12800
+2025-11-13 08:38:13,232 - INFO - Fetched page 65 (200 records), total so far: 13000
+2025-11-13 08:38:14,861 - INFO - Fetched page 66 (200 records), total so far: 13200
+2025-11-13 08:38:16,368 - INFO - Fetched page 67 (200 records), total so far: 13400
+2025-11-13 08:38:18,120 - INFO - Fetched page 68 (200 records), total so far: 13600
+2025-11-13 08:38:19,989 - INFO - Fetched page 69 (200 records), total so far: 13800
+2025-11-13 08:38:21,780 - INFO - Fetched page 70 (200 records), total so far: 14000
+2025-11-13 08:38:23,580 - INFO - Fetched page 71 (200 records), total so far: 14200
+2025-11-13 08:38:25,134 - INFO - Fetched page 72 (200 records), total so far: 14400
+2025-11-13 08:38:26,769 - INFO - Fetched page 73 (200 records), total so far: 14600
+2025-11-13 08:38:28,440 - INFO - Fetched page 74 (200 records), total so far: 14800
+2025-11-13 08:38:30,074 - INFO - Fetched page 75 (200 records), total so far: 15000
+2025-11-13 08:38:32,059 - INFO - Fetched page 76 (162 records), total so far: 15162
+2025-11-13 08:38:32,059 - INFO - Fetched 15162 transactions
+2025-11-13 08:38:32,442 - ERROR - Request failed for http://196.216.49.238:8801/personnel/api/employees/ page 1: 401 Client Error: Unauthorized for url: http://196.216.49.238:8801/personnel/api/employees/?page=1&page_size=200
+Traceback (most recent call last):
+  File "/home/aktechnical/attendance_sync/main.py", line 122, in fetch_paginated_data
+    resp.raise_for_status()
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 401 Client Error: Unauthorized for url: http://196.216.49.238:8801/personnel/api/employees/?page=1&page_size=200
+2025-11-13 08:38:32,444 - WARNING - Employee API JWT auth failed: 401 Client Error: Unauthorized for url: http://196.216.49.238:8801/personnel/api/employees/?page=1&page_size=200. Falling back to Basic Auth.
+2025-11-13 08:38:34,176 - INFO - Fetched page 1 (88 records), total so far: 88
+2025-11-13 08:38:34,545 - ERROR - Request failed for http://196.216.49.238:8801/personnel/api/areas/ page 1: 401 Client Error: Unauthorized for url: http://196.216.49.238:8801/personnel/api/areas/?page=1&page_size=200
+Traceback (most recent call last):
+  File "/home/aktechnical/attendance_sync/main.py", line 122, in fetch_paginated_data
+    resp.raise_for_status()
+  File "/home/aktechnical/attendance_sync/.venv/lib/python3.12/site-packages/requests/models.py", line 1026, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 401 Client Error: Unauthorized for url: http://196.216.49.238:8801/personnel/api/areas/?page=1&page_size=200
+2025-11-13 08:38:34,969 - INFO - Fetched page 1 (3 records), total so far: 3
+2025-11-13 08:38:36,594 - INFO - Connected to DB for processing
+2025-11-13 08:41:36,603 - INFO - Inserted batch: total inserted 500 (processed 500/15162)
+2025-11-13 08:43:07,757 - INFO - Progress: processed 1000/15162 (inserted 500, updated 1)
+2025-11-13 08:44:39,707 - INFO - Inserted batch: total inserted 1000 (processed 1001/15162)
+2025-11-13 08:47:44,727 - INFO - Inserted batch: total inserted 1500 (processed 1506/15162)
+2025-11-13 08:49:13,459 - INFO - Progress: processed 2000/15162 (inserted 1500, updated 7)
+2025-11-13 08:50:42,727 - INFO - Inserted batch: total inserted 2000 (processed 2007/15162)
+2025-11-13 08:53:41,942 - INFO - Inserted batch: total inserted 2500 (processed 2509/15162)
+2025-11-13 08:55:23,723 - INFO - Progress: processed 3000/15162 (inserted 2500, updated 48)
+2025-11-13 08:57:03,717 - INFO - Inserted batch: total inserted 3000 (processed 3048/15162)
+2025-11-13 09:03:20,998 - INFO - Tables initialized successfully.
+2025-11-13 09:05:15,241 - INFO - Fetched 15164 transactions
+2025-11-13 09:05:15,652 - INFO - JWT token obtained successfully
+2025-11-13 10:45:26,980 - ERROR - Sync endpoint error: (207, b"Invalid column name 'fetch_status'.DB-Lib error message 20018, severity 16:\nGeneral SQL Server error: Check messages from the SQL Server\n")
+Traceback (most recent call last):
+  File "src/pymssql/_pymssql.pyx", line 447, in pymssql._pymssql.Cursor.execute
+  File "src/pymssql/_mssql.pyx", line 1125, in pymssql._mssql.MSSQLConnection.execute_query
+  File "src/pymssql/_mssql.pyx", line 1156, in pymssql._mssql.MSSQLConnection.execute_query
+  File "src/pymssql/_mssql.pyx", line 1289, in pymssql._mssql.MSSQLConnection.format_and_run_query
+  File "src/pymssql/_mssql.pyx", line 1855, in pymssql._mssql.check_cancel_and_raise
+  File "src/pymssql/_mssql.pyx", line 1901, in pymssql._mssql.raise_MSSQLDatabaseException
+pymssql._mssql.MSSQLDatabaseException: (207, b"Invalid column name 'fetch_status'.DB-Lib error message 20018, severity 16:\nGeneral SQL Server error: Check messages from the SQL Server\n")
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/aktechnical/attendance_sync/main.py", line 302, in sync_transactions
+    process_and_store()
+  File "/home/aktechnical/attendance_sync/main.py", line 279, in process_and_store
+    cursor.executemany("INSERT INTO dbo.EmployeeWorkAdjusted (emp_code, emp_name, location, punch_date, adj_in_time, adj_out_time, total_work_hrs, attendance_status, fetch_status) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)", wa_batch)
+  File "src/pymssql/_pymssql.pyx", line 477, in pymssql._pymssql.Cursor.executemany
+  File "src/pymssql/_pymssql.pyx", line 462, in pymssql._pymssql.Cursor.execute
+pymssql.exceptions.ProgrammingError: (207, b"Invalid column name 'fetch_status'.DB-Lib error message 20018, severity 16:\nGeneral SQL Server error: Check messages from the SQL Server\n")
+2025-11-14 03:26:47,688 - INFO - Tables initialized successfully.
+2025-11-14 03:28:58,899 - INFO - Fetched 15213 transactions
+2025-11-14 03:28:59,495 - INFO - JWT token obtained successfully
+2025-11-14 06:11:21,848 - INFO - Sync completed. 23 transactions processed.
+2025-11-17 08:19:58,667 - INFO - Tables initialized successfully.
+2025-11-17 08:21:35,147 - INFO - Fetched 15376 transactions
+2025-11-17 08:21:35,431 - INFO - JWT token obtained successfully
+2025-11-20 10:53:50,201 - INFO - Tables initialized successfully.
+2025-11-20 10:55:48,877 - INFO - Fetched 15608 transactions
+2025-11-20 10:55:49,158 - INFO - JWT token obtained successfully
+2025-11-20 12:21:45,555 - INFO - Sync completed. 203 transactions processed.
+2025-11-23 02:14:01,540 - INFO - Tables initialized successfully.
+2025-11-23 02:16:22,030 - INFO - Fetched 15652 transactions
+2025-11-23 02:16:22,322 - INFO - JWT token obtained successfully
+2025-11-23 03:40:21,828 - INFO - Sync completed. 23 transactions processed.

@@ -1,0 +1,267 @@
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import requests
+import pymssql
+from datetime import datetime, timedelta
+import uvicorn
+import secrets
+import logging
+
+# ===== Logging =====
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger("attendance_sync")
+
+# ===== FASTAPI APP =====
+app = FastAPI(title="Employee Transaction Sync API")
+
+# ===== AUTH CONFIG =====
+security = HTTPBasic()
+API_USER = "admin"
+API_PASS = "Noble@321#"
+JWT_TOKEN = "ey.........oQi98"  # JWT for personnel APIs
+
+def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
+    correct_username = secrets.compare_digest(credentials.username, API_USER)
+    correct_password = secrets.compare_digest(credentials.password, API_PASS)
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+# ===== CONFIG =====
+API_TRANSACTIONS_URL = "http://196.216.49.238:8801/iclock/api/transactions/"
+EMP_API_URL = "http://196.216.49.238:8801/personnel/api/employees/"
+AREA_API_URL = "http://196.216.49.238:8801/personnel/api/areas/"
+
+DB_CONFIG = {
+    "server": "196.216.49.238",
+    "port": 1433,
+    "database": "akp_test",
+    "username": "sa",
+    "password": "Md5189md5189@321#"
+}
+
+# ===== SQL CONNECTION =====
+def get_connection():
+    try:
+        conn = pymssql.connect(
+            server=DB_CONFIG["server"],
+            user=DB_CONFIG["username"],
+            password=DB_CONFIG["password"],
+            database=DB_CONFIG["database"],
+            port=DB_CONFIG["port"],
+            timeout=5
+        )
+        return conn
+    except Exception as e:
+        logger.error(f"DB Connection Error: {e}")
+        raise e
+
+# ===== TABLE CREATION =====
+def init_tables():
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
+        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='EmployeeTransactions' AND xtype='U')
+        CREATE TABLE EmployeeTransactions (
+            id INT IDENTITY PRIMARY KEY,
+            emp_code VARCHAR(50),
+            emp_name VARCHAR(100),
+            location VARCHAR(100),
+            punch_date DATE,
+            punch_in DATETIME,
+            punch_out DATETIME,
+            work_duration FLOAT,
+            created_at DATETIME DEFAULT GETDATE()
+        )
+        """)
+        cursor.execute("""
+        IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='EmployeeWorkAdjusted' AND xtype='U')
+        CREATE TABLE EmployeeWorkAdjusted (
+            id INT IDENTITY PRIMARY KEY,
+            emp_code VARCHAR(50),
+            emp_name VARCHAR(100),
+            location VARCHAR(100),
+            punch_date DATE,
+            adj_in_time DATETIME,
+            adj_out_time DATETIME,
+            total_work_hrs FLOAT,
+            attendance_status VARCHAR(10),
+            created_at DATETIME DEFAULT GETDATE()
+        )
+        """)
+        conn.commit()
+        conn.close()
+        logger.info("Tables initialized successfully.")
+    except Exception as e:
+        logger.error(f"Error initializing tables: {e}")
+
+# ===== PAGINATED API FETCH =====
+def fetch_paginated_data(url, auth=None, headers=None, params=None):
+    results = []
+    page = 1
+    page_size = 100
+    while True:
+        p = params.copy() if params else {}
+        p.update({"page": page, "page_size": page_size})
+        resp = requests.get(url, auth=auth, headers=headers, params=p, timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+        if "data" in data:
+            results.extend(data["data"])
+            if not data.get("next"):
+                break
+        else:
+            results.extend(data)
+            break
+        page += 1
+    return results
+
+# ===== FETCH TRANSACTIONS, EMPLOYEES, AREAS =====
+def fetch_transactions_and_employees():
+    try:
+        logger.info("Fetching transactions...")
+        tdata = fetch_paginated_data(API_TRANSACTIONS_URL, auth=(API_USER, API_PASS))
+        logger.info(f"Fetched {len(tdata)} transactions")
+
+        headers = {"Authorization": f"JWT {JWT_TOKEN}"}
+        logger.info("Fetching employees...")
+        edata = fetch_paginated_data(EMP_API_URL, headers=headers)
+        logger.info(f"Fetched {len(edata)} employees")
+
+        logger.info("Fetching areas...")
+        area_data = fetch_paginated_data(AREA_API_URL, headers=headers)
+        area_map = {a["area_code"]: a["area_name"] for a in area_data}
+        logger.info(f"Fetched {len(area_map)} areas")
+
+        employees = {}
+        for e in edata:
+            emp_code = str(e.get("emp_code"))
+            first_name = e.get("first_name") or ""
+            areas = e.get("area") or []
+            if areas:
+                area_code = areas[0].get("area_code")
+                location = area_map.get(area_code, "Unknown")
+            else:
+                location = "Unknown"
+            employees[emp_code] = {"first_name": first_name, "location": location}
+
+        return tdata, employees
+    except Exception as e:
+        raise Exception(f"Transactions API error: {e}")
+
+# ===== ATTENDANCE STATUS =====
+def get_attendance_status(work_hours):
+    if work_hours >= 8:
+        return "P"
+    elif 4 <= work_hours < 8:
+        return "HD"
+    else:
+        return "A"
+
+# ===== PROCESS AND STORE =====
+def process_and_store():
+    try:
+        tdata, employees = fetch_transactions_and_employees()
+        conn = get_connection()
+        cursor = conn.cursor()
+        logger.info("Connected to DB")
+
+        for i, tx in enumerate(tdata, start=1):
+            emp_code = str(tx.get("emp_code"))
+            emp = employees.get(emp_code, {})
+            emp_name = emp.get("first_name", "Unknown")
+            location = emp.get("location", "Unknown")
+
+            punch_time_str = tx.get("punch_time")
+            if not punch_time_str:
+                continue
+            punch_datetime = datetime.fromisoformat(punch_time_str)
+            punch_date = punch_datetime.date()
+
+            # Fetch existing punches
+            cursor.execute("""
+                SELECT punch_in, punch_out FROM EmployeeTransactions
+                WHERE emp_code=%s AND punch_date=%s
+            """, (emp_code, punch_date))
+            row = cursor.fetchone()
+
+            if not row:
+                cursor.execute("""
+                    INSERT INTO EmployeeTransactions
+                    (emp_code, emp_name, location, punch_date, punch_in, punch_out, work_duration)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (emp_code, emp_name, location, punch_date, punch_datetime, punch_datetime, 0))
+            else:
+                punch_in, punch_out = row
+                if punch_datetime < punch_in:
+                    punch_in = punch_datetime
+                if punch_datetime > punch_out:
+                    punch_out = punch_datetime
+                duration = (punch_out - punch_in).total_seconds() / 3600
+                cursor.execute("""
+                    UPDATE EmployeeTransactions
+                    SET punch_in=%s, punch_out=%s, work_duration=%s
+                    WHERE emp_code=%s AND punch_date=%s
+                """, (punch_in, punch_out, duration, emp_code, punch_date))
+
+            if i % 50 == 0:
+                logger.info(f"Processed {i}/{len(tdata)} transactions")
+
+        logger.info("Committing EmployeeTransactions...")
+        conn.commit()
+
+        # Rebuild adjusted table
+        logger.info("Rebuilding EmployeeWorkAdjusted table...")
+        cursor.execute("DELETE FROM EmployeeWorkAdjusted")
+        cursor.execute("SELECT emp_code, emp_name, location, punch_date, punch_in, punch_out, work_duration FROM EmployeeTransactions")
+        rows = cursor.fetchall()
+
+        for r in rows:
+            emp_code, emp_name, location, punch_date, pin, pout, duration = r
+            # Adjust for max 8.5 hours
+            if duration > 8.5:
+                adj_out = pin + timedelta(hours=8.5)
+                total_hrs = 8.5
+            else:
+                adj_out = pout
+                total_hrs = duration
+            attendance_status = get_attendance_status(total_hrs)
+
+            cursor.execute("""
+                INSERT INTO EmployeeWorkAdjusted
+                (emp_code, emp_name, location, punch_date, adj_in_time, adj_out_time, total_work_hrs, attendance_status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (emp_code, emp_name, location, punch_date, pin, adj_out, total_hrs, attendance_status))
+
+        conn.commit()
+        conn.close()
+        logger.info("Sync completed successfully")
+    except Exception as e:
+        logger.error(f"Sync error: {e}")
+        raise e
+
+# ===== API ENDPOINTS =====
+@app.on_event("startup")
+def startup_event():
+    init_tables()
+
+@app.get("/")
+def home():
+    return {"status": "Running", "message": "Employee Transaction API System Active"}
+
+@app.get("/sync")
+def sync_transactions(username: str = Depends(authenticate)):
+    try:
+        process_and_store()
+        return {"status": "success", "message": "Transactions synced successfully"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+
+# ===== RUN SERVER =====
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

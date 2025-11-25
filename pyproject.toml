@@ -1,0 +1,15 @@
+[project]
+name = "attendance-sync"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "apscheduler>=3.11.1",
+    "fastapi>=0.121.1",
+    "pymssql>=2.3.9",
+    "pyodbc>=5.3.0",
+    "requests>=2.32.5",
+    "shell>=1.0.1",
+    "uvicorn>=0.38.0",
+]

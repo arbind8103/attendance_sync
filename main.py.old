@@ -1,0 +1,181 @@
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import requests
+import pymssql
+from datetime import datetime, timedelta
+import secrets
+
+# ======= FASTAPI APP =======
+app = FastAPI(title="Employee Transaction Sync API")
+
+# ======= AUTH CONFIG =======
+security = HTTPBasic()
+API_USER = "admin"
+API_PASS = "Md5189md5189"
+
+def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
+    """Authenticate user using Basic Auth"""
+    correct_username = secrets.compare_digest(credentials.username, API_USER)
+    correct_password = secrets.compare_digest(credentials.password, API_PASS)
+    if not (correct_username and correct_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Basic"},
+        )
+    return credentials.username
+
+# ======= CONFIG =======
+API_URL = "http://supremeautomobilerdc.com:81/iclock/api/transactions/"
+EMP_API_URL = "http://supremeautomobilerdc.com:81/personnel/api/employees/"
+
+DB_CONFIG = {
+    "server": "196.216.49.238",
+    "database": "akp_test",
+    "username": "sa",
+    "password": "Md5189md5189@321#",
+    "port": 1433
+}
+
+# ======= SQL CONNECTION =======
+def get_connection():
+    return pymssql.connect(
+        server=DB_CONFIG["server"],
+        user=DB_CONFIG["username"],
+        password=DB_CONFIG["password"],
+        database=DB_CONFIG["database"],
+        port=DB_CONFIG["port"]
+    )
+
+# ======= TABLE CREATION =======
+def init_tables():
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='EmployeeTransactions' AND xtype='U')
+    CREATE TABLE EmployeeTransactions (
+        id INT IDENTITY PRIMARY KEY,
+        emp_code VARCHAR(50),
+        emp_name VARCHAR(100),
+        location VARCHAR(100),
+        punch_date DATE,
+        punch_in DATETIME,
+        punch_out DATETIME,
+        work_duration FLOAT,
+        created_at DATETIME DEFAULT GETDATE()
+    )
+    """)
+
+    cursor.execute("""
+    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='EmployeeWorkAdjusted' AND xtype='U')
+    CREATE TABLE EmployeeWorkAdjusted (
+        id INT IDENTITY PRIMARY KEY,
+        emp_code VARCHAR(50),
+        emp_name VARCHAR(100),
+        location VARCHAR(100),
+        punch_date DATE,
+        adj_in_time DATETIME,
+        adj_out_time DATETIME,
+        total_work_hrs FLOAT,
+        created_at DATETIME DEFAULT GETDATE()
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+# ======= FETCH DATA FROM API =======
+def fetch_transactions():
+    tdata = requests.get(API_URL).json()
+    edata = requests.get(EMP_API_URL).json()
+    employees = {e["emp_code"]: e for e in edata}
+    return tdata, employees
+
+# ======= PROCESS AND STORE DATA =======
+def process_and_store():
+    tdata, employees = fetch_transactions()
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    for tx in tdata:
+        emp_code = tx.get("emp_code")
+        emp = employees.get(emp_code, {})
+        emp_name = emp.get("first_name", "Unknown")
+        location = emp.get("area_name", "Unknown")
+
+        punch_datetime = datetime.fromisoformat(tx.get("punch_time"))
+        punch_date = punch_datetime.date()
+
+        # Check for first/last punches of the day
+        cursor.execute("""
+            SELECT punch_in, punch_out FROM EmployeeTransactions
+            WHERE emp_code=%s AND punch_date=%s
+        """, (emp_code, punch_date))
+        row = cursor.fetchone()
+
+        if not row:
+            # First entry for the day
+            cursor.execute("""
+                INSERT INTO EmployeeTransactions (emp_code, emp_name, location, punch_date, punch_in, punch_out, work_duration)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (emp_code, emp_name, location, punch_date, punch_datetime, punch_datetime, 0))
+        else:
+            punch_in, punch_out = row
+            if punch_datetime < punch_in:
+                punch_in = punch_datetime
+            if punch_datetime > punch_out:
+                punch_out = punch_datetime
+            duration = (punch_out - punch_in).total_seconds() / 3600
+
+            cursor.execute("""
+                UPDATE EmployeeTransactions SET punch_in=%s, punch_out=%s, work_duration=%s
+                WHERE emp_code=%s AND punch_date=%s
+            """, (punch_in, punch_out, duration, emp_code, punch_date))
+
+    conn.commit()
+
+    # Rebuild adjusted table
+    cursor.execute("DELETE FROM EmployeeWorkAdjusted")
+    cursor.execute("SELECT emp_code, emp_name, location, punch_date, punch_in, punch_out, work_duration FROM EmployeeTransactions")
+    rows = cursor.fetchall()
+
+    for r in rows:
+        emp_code, emp_name, location, punch_date, pin, pout, duration = r
+        adj_in = pin
+        if duration > 8.5:
+            adj_out = pin + timedelta(hours=8.5)
+            total_hrs = 8.5
+        else:
+            adj_out = pout
+            total_hrs = duration
+
+        cursor.execute("""
+            INSERT INTO EmployeeWorkAdjusted (emp_code, emp_name, location, punch_date, adj_in_time, adj_out_time, total_work_hrs)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (emp_code, emp_name, location, punch_date, adj_in, adj_out, total_hrs))
+
+    conn.commit()
+    conn.close()
+
+# ======= API ENDPOINTS =======
+@app.on_event("startup")
+def startup_event():
+    init_tables()
+
+@app.get("/")
+def home():
+    return {"status": "Running", "message": "Employee Transaction API System Active"}
+
+@app.get("/sync")
+def sync_transactions(username: str = Depends(authenticate)):
+    try:
+        process_and_store()
+        return {"status": "success", "message": "Transactions synced successfully"}
+    except Exception as e:
+        return {"status": "error", "detail": str(e)}
+
+# ======= RUN SERVER WITH UV =======
+if __name__ == "__main__":
+    import uv  # use uv project runner
+    uv.run("main:app", host="0.0.0.0", port=8000, reload=True)

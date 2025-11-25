@@ -1,0 +1,454 @@
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
+import requests
+import pymssql
+from datetime import datetime, timedelta
+import uvicorn
+import secrets
+import logging
+import time
+
+# ===== Logging =====
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+    handlers=[
+        logging.FileHandler("attendance_sync.log"),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger("attendance_sync")
+
+# ===== FASTAPI APP =====
+app = FastAPI(title="Employee Transaction Sync API")
+
+# ===== AUTH CONFIG =====
+security = HTTPBasic()
+API_USER = "admin"
+API_PASS = "Noble@321#"
+JWT_TOKEN = "ey.........oQi98"  # keep blank "" if not used
+
+# ===== CONFIG =====
+API_TRANSACTIONS_URL = "http://196.216.49.238:8801/iclock/api/transactions/"
+EMP_API_URL = "http://196.216.49.238:8801/personnel/api/employees/"
+AREA_API_URL = "http://196.216.49.238:8801/personnel/api/areas/"
+
+DB_CONFIG = {
+    "server": "196.216.49.238",
+    "port": 1433,
+    "database": "akp_test",
+    "username": "sa",
+    "password": "Md5189md5189@321#"
+}
+
+PAGE_SIZE = 200
+FETCH_TIMEOUT = 30
+BATCH_SIZE = 500
+
+# ===== AUTH DEPENDENCY =====
+def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
+    if not (secrets.compare_digest(credentials.username, API_USER) and secrets.compare_digest(credentials.password, API_PASS)):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid authentication credentials", headers={"WWW-Authenticate": "Basic"})
+    return credentials.username
+
+# ===== DB CONNECTION (retry) =====
+def get_connection(retries=3, delay=1):
+    last_exc = None
+    for attempt in range(1, retries + 1):
+        try:
+            conn = pymssql.connect(
+                server=DB_CONFIG["server"],
+                user=DB_CONFIG["username"],
+                password=DB_CONFIG["password"],
+                database=DB_CONFIG["database"],
+                port=DB_CONFIG["port"],
+                timeout=30
+            )
+            return conn
+        except Exception as e:
+            last_exc = e
+            logger.warning(f"DB connection attempt {attempt} failed: {e}")
+            time.sleep(delay)
+    logger.error("DB connection failed after retries")
+    raise last_exc
+
+# ===== TABLE CREATION =====
+def init_tables():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='EmployeeTransactions' AND xtype='U')
+    CREATE TABLE dbo.EmployeeTransactions (
+        id INT IDENTITY PRIMARY KEY,
+        emp_code VARCHAR(50),
+        emp_name VARCHAR(100),
+        location VARCHAR(100),
+        punch_date DATE,
+        punch_in DATETIME,
+        punch_out DATETIME,
+        work_duration FLOAT,
+        created_at DATETIME DEFAULT GETDATE()
+    )
+    """)
+    cursor.execute("""
+    IF NOT EXISTS (SELECT * FROM sysobjects WHERE name='EmployeeWorkAdjusted' AND xtype='U')
+    CREATE TABLE dbo.EmployeeWorkAdjusted (
+        id INT IDENTITY PRIMARY KEY,
+        emp_code VARCHAR(50),
+        emp_name VARCHAR(100),
+        location VARCHAR(100),
+        punch_date DATE,
+        adj_in_time DATETIME,
+        adj_out_time DATETIME,
+        total_work_hrs FLOAT,
+        attendance_status VARCHAR(10),
+        fetch_status INT DEFAULT 0,
+        created_at DATETIME DEFAULT GETDATE()
+    )
+    """)
+    conn.commit()
+    conn.close()
+    logger.info("Tables initialized successfully.")
+
+# ===== PAGINATED FETCH WITH BASIC RETRIES =====
+def fetch_paginated_data(url, auth=None, headers=None, params=None, timeout=FETCH_TIMEOUT, page_size=PAGE_SIZE):
+    results = []
+    page = 1
+    while True:
+        p = params.copy() if params else {}
+        p.update({"page": page, "page_size": page_size})
+        try:
+            resp = requests.get(url, auth=auth, headers=headers, params=p, timeout=timeout)
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.exceptions.RequestException as e:
+            logger.exception(f"Request failed for {url} page {page}: {e}")
+            raise
+
+        if isinstance(data, dict) and "data" in data:
+            results.extend(data["data"])
+            logger.info(f"Fetched page {page} ({len(data['data'])} records), total so far: {len(results)}")
+            if not data.get("next"):
+                break
+        elif isinstance(data, list):
+            results.extend(data)
+            logger.info(f"Fetched list response (page {page}), total so far: {len(results)}")
+            break
+        else:
+            break
+        page += 1
+    return results
+
+# ===== LAST SYNC DATE (incremental) =====
+def get_last_sync_date(cursor):
+    cursor.execute("SELECT MAX(punch_date) FROM dbo.EmployeeTransactions")
+    row = cursor.fetchone()
+    if row and row[0]:
+        return row[0]
+    else:
+        return datetime.now() - timedelta(days=30)
+
+# ===== FETCH DATA (transactions + employees + areas) =====
+def fetch_data():
+    conn = get_connection()
+    cursor = conn.cursor()
+    try:
+        start_date = get_last_sync_date(cursor)
+        end_date = datetime.now()
+        params = {"start_date": start_date.strftime("%Y-%m-%d"), "end_date": end_date.strftime("%Y-%m-%d")}
+        logger.info(f"Fetching transactions from {params['start_date']} to {params['end_date']}")
+
+        # transactions use basic auth (confirmed)
+        trans_auth = (API_USER, API_PASS)
+        tdata = fetch_paginated_data(API_TRANSACTIONS_URL, auth=trans_auth, params=params)
+        logger.info(f"Fetched {len(tdata)} transactions")
+
+        # employees & areas: try JWT header first (if JWT_TOKEN provided), else fallback to basic auth
+        headers = {"Authorization": f"JWT {JWT_TOKEN}"} if JWT_TOKEN else None
+
+        edata = []
+        area_data = []
+        # Try employees with JWT header (if provided)
+        if headers:
+            try:
+                edata = fetch_paginated_data(EMP_API_URL, headers=headers)
+            except requests.exceptions.HTTPError as e:
+                logger.warning(f"Employee API JWT auth failed: {e}. Falling back to Basic Auth.")
+                try:
+                    edata = fetch_paginated_data(EMP_API_URL, auth=trans_auth)
+                except Exception as e2:
+                    logger.error(f"Employee API basic auth failed too: {e2}. Continuing with empty employees list.")
+                    edata = []
+            except Exception as e:
+                logger.warning(f"Employee fetch with JWT failed: {e}. Trying basic auth.")
+                try:
+                    edata = fetch_paginated_data(EMP_API_URL, auth=trans_auth)
+                except Exception as e2:
+                    logger.error(f"Employee API basic auth failed: {e2}. Continuing with empty employees.")
+                    edata = []
+        else:
+            try:
+                edata = fetch_paginated_data(EMP_API_URL, auth=trans_auth)
+            except Exception as e:
+                logger.error(f"Employee API fetch failed with basic auth: {e}. Continuing with empty employees.")
+                edata = []
+
+        # Areas same fallback logic
+        if headers:
+            try:
+                area_data = fetch_paginated_data(AREA_API_URL, headers=headers)
+            except Exception:
+                try:
+                    area_data = fetch_paginated_data(AREA_API_URL, auth=trans_auth)
+                except Exception as e:
+                    logger.error(f"Area API fetch failed with both JWT and basic auth: {e}. Continuing with empty areas.")
+                    area_data = []
+        else:
+            try:
+                area_data = fetch_paginated_data(AREA_API_URL, auth=trans_auth)
+            except Exception as e:
+                logger.error(f"Area API fetch failed with basic auth: {e}. Continuing with empty areas.")
+                area_data = []
+
+        # Build area map
+        area_map = {}
+        for a in area_data:
+            key = a.get("area_code") or a.get("id")
+            name = a.get("area_name") or a.get("name") or "Unknown"
+            if key is not None:
+                area_map[str(key)] = name
+
+        # Build employee lookup
+        employees = {}
+        for e in edata:
+            code = e.get("emp_code")
+            if code is None:
+                continue
+            emp_code = str(code)
+            first_name = e.get("first_name") or ""
+            areas = e.get("area") or []
+            location = "Unknown"
+            if isinstance(areas, list) and areas:
+                ac = areas[0].get("area_code") or areas[0].get("id")
+                if ac is not None:
+                    location = area_map.get(str(ac), "Unknown")
+            employees[emp_code] = {"first_name": first_name, "location": location}
+
+        return tdata, employees
+
+    finally:
+        conn.close()
+
+# ===== ATTENDANCE STATUS =====
+def get_attendance_status(work_hours):
+    if work_hours >= 8:
+        return "P"
+    elif 4 <= work_hours < 8:
+        return "HD"
+    else:
+        return "A"
+
+# ===== PROCESS AND STORE (batched) =====
+def process_and_store(batch_size=BATCH_SIZE):
+    try:
+        tdata, employees = fetch_data()
+    except Exception as e:
+        logger.exception(f"Fetching data failed: {e}")
+        return
+
+    if not tdata:
+        logger.info("No transactions to process.")
+        return
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    logger.info("Connected to DB for processing")
+
+    insert_batch = []
+    processed = 0
+    inserted = 0
+    updated = 0
+    total = len(tdata)
+
+    for i, tx in enumerate(tdata, start=1):
+        try:
+            emp_code_raw = tx.get("emp_code")
+            if emp_code_raw is None:
+                continue
+            emp_code = str(emp_code_raw)
+            punch_time_str = tx.get("punch_time")
+            if not punch_time_str:
+                continue
+
+            emp = employees.get(emp_code, {})
+            emp_name = emp.get("first_name", "Unknown") or "Unknown"
+            location = emp.get("location", "Unknown") or "Unknown"
+
+            # parse punch datetime
+            try:
+                punch_dt = datetime.fromisoformat(punch_time_str)
+            except Exception:
+                try:
+                    punch_dt = datetime.strptime(punch_time_str, "%Y-%m-%d %H:%M:%S")
+                except Exception:
+                    logger.debug(f"Unrecognized datetime format: {punch_time_str}")
+                    continue
+
+            punch_date = punch_dt.date()
+
+            # check existing
+            cursor.execute("SELECT punch_in, punch_out FROM dbo.EmployeeTransactions WHERE emp_code=%s AND punch_date=%s", (emp_code, punch_date))
+            row = cursor.fetchone()
+
+            if not row:
+                insert_batch.append((emp_code, emp_name, location, punch_date, punch_dt, punch_dt, 0.0))
+            else:
+                punch_in, punch_out = row
+                changed = False
+                if punch_in is None or punch_dt < punch_in:
+                    punch_in = punch_dt
+                    changed = True
+                if punch_out is None or punch_dt > punch_out:
+                    punch_out = punch_dt
+                    changed = True
+                if changed:
+                    duration = (punch_out - punch_in).total_seconds() / 3600.0
+                    cursor.execute("""
+                        UPDATE dbo.EmployeeTransactions
+                        SET punch_in=%s, punch_out=%s, work_duration=%s
+                        WHERE emp_code=%s AND punch_date=%s
+                    """, (punch_in, punch_out, duration, emp_code, punch_date))
+                    updated += 1
+
+            if len(insert_batch) >= batch_size:
+                try:
+                    cursor.executemany("""
+                        INSERT INTO dbo.EmployeeTransactions
+                        (emp_code, emp_name, location, punch_date, punch_in, punch_out, work_duration)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, insert_batch)
+                    conn.commit()
+                    inserted += len(insert_batch)
+                    logger.info(f"Inserted batch: total inserted {inserted} (processed {i}/{total})")
+                    insert_batch.clear()
+                except Exception as e:
+                    logger.exception(f"Batch insert failed at {i}: {e}")
+                    conn.rollback()
+
+            if i % 1000 == 0 or i == total:
+                logger.info(f"Progress: processed {i}/{total} (inserted {inserted}, updated {updated})")
+
+            processed += 1
+
+        except Exception as e:
+            logger.exception(f"Error processing transaction index {i}: {e}")
+
+    if insert_batch:
+        try:
+            cursor.executemany("""
+                INSERT INTO dbo.EmployeeTransactions
+                (emp_code, emp_name, location, punch_date, punch_in, punch_out, work_duration)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, insert_batch)
+            conn.commit()
+            inserted += len(insert_batch)
+            logger.info(f"Inserted final batch of {len(insert_batch)} records")
+            insert_batch.clear()
+        except Exception as e:
+            logger.exception(f"Final batch insert failed: {e}")
+            conn.rollback()
+
+    # rebuild adjusted
+    try:
+        logger.info("Rebuilding dbo.EmployeeWorkAdjusted...")
+        cursor.execute("DELETE FROM dbo.EmployeeWorkAdjusted")
+        cursor.execute("SELECT emp_code, emp_name, location, punch_date, punch_in, punch_out, work_duration FROM dbo.EmployeeTransactions")
+        rows = cursor.fetchall()
+
+        wa_batch = []
+        wa_inserted = 0
+        for r in rows:
+            try:
+                emp_code, emp_name, location, punch_date, pin, pout, duration = r
+                if pin is None or pout is None:
+                    continue
+                if duration is None:
+                    duration = (pout - pin).total_seconds() / 3600.0
+                if duration > 8.5:
+                    adj_out = pin + timedelta(hours=8.5)
+                    total_hrs = 8.5
+                else:
+                    adj_out = pout
+                    total_hrs = duration
+                attendance_status = get_attendance_status(total_hrs)
+                wa_batch.append((emp_code, emp_name, location, punch_date, pin, adj_out, total_hrs, attendance_status, 0))
+
+                if len(wa_batch) >= batch_size:
+                    cursor.executemany("""
+                        INSERT INTO dbo.EmployeeWorkAdjusted
+                        (emp_code, emp_name, location, punch_date, adj_in_time, adj_out_time, total_work_hrs, attendance_status, fetch_status)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, wa_batch)
+                    conn.commit()
+                    wa_inserted += len(wa_batch)
+                    wa_batch.clear()
+            except Exception as e:
+                logger.exception(f"Error building adjusted row for {r}: {e}")
+
+        if wa_batch:
+            cursor.executemany("""
+                INSERT INTO dbo.EmployeeWorkAdjusted
+                (emp_code, emp_name, location, punch_date, adj_in_time, adj_out_time, total_work_hrs, attendance_status, fetch_status)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, wa_batch)
+            conn.commit()
+            wa_inserted += len(wa_batch)
+            wa_batch.clear()
+
+        logger.info(f"EmployeeWorkAdjusted rebuilt: {wa_inserted} rows inserted.")
+    except Exception as e:
+        logger.exception(f"Failed rebuilding EmployeeWorkAdjusted: {e}")
+        conn.rollback()
+
+    conn.close()
+    logger.info(f"Sync finished. Processed: {processed}, Inserted: {inserted}, Updated: {updated}")
+
+# ===== API ENDPOINTS =====
+@app.on_event("startup")
+def startup_event():
+    init_tables()
+
+@app.get("/")
+def home():
+    return {"status": "Running", "message": "Employee Transaction API System Active"}
+
+@app.get("/sync")
+def sync_transactions(username: str = Depends(authenticate)):
+    try:
+        process_and_store()
+        return {"status": "success", "message": "Transactions sync completed (check logs)."}
+    except Exception as e:
+        logger.exception(f"Sync endpoint error: {e}")
+        return {"status": "error", "detail": str(e)}
+
+@app.get("/fetch-adjusted")
+def fetch_adjusted(username: str = Depends(authenticate)):
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM dbo.EmployeeWorkAdjusted WHERE fetch_status=0")
+        rows = cursor.fetchall()
+        column_names = [c[0] for c in cursor.description]
+        ids = [r[0] for r in rows]
+        if ids:
+            cursor.executemany("UPDATE dbo.EmployeeWorkAdjusted SET fetch_status=1 WHERE id=%s", [(i,) for i in ids])
+            conn.commit()
+        conn.close()
+        return {"rows": [dict(zip(column_names, r)) for r in rows]}
+    except Exception as e:
+        logger.exception(f"fetch-adjusted error: {e}")
+        return {"status": "error", "detail": str(e)}
+
+# ===== RUN SERVER =====
+if __name__ == "__main__":
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
