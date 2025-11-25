@@ -17,7 +17,7 @@ app = FastAPI(title="Employee Transaction Sync API")
 # ===== AUTH CONFIG =====
 security = HTTPBasic()
 API_USER = "admin"
-API_PASS = "Md5189md5189"
+API_PASS = "xxxxxxxxxx"
 JWT_TOKEN = "ey.........oQi98"  # JWT for personnel APIs
 
 def authenticate(credentials: HTTPBasicCredentials = Depends(security)):
