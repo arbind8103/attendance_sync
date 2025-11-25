@@ -23,9 +23,9 @@ app = FastAPI(title="Employee Transaction Sync API")
 # ===== AUTH CONFIG =====
 security = HTTPBasic()
 API_USER = "admin"
-API_PASS = "Noble@321#"
+API_PASS = "xxxxx"
 JWT_USERNAME = "admin"
-JWT_PASSWORD = "Noble@321#"
+JWT_PASSWORD = "xxxxxxxxx"
 
 # ===== CONFIG =====
 API_TRANSACTIONS_URL = "http://196.216.49.238:8801/iclock/api/transactions/"
@@ -33,11 +33,11 @@ EMP_API_URL = "http://196.216.49.238:8801/personnel/api/employees/"
 AREA_API_URL = "http://196.216.49.238:8801/personnel/api/areas/"
 
 DB_CONFIG = {
-    "server": "196.216.49.238",
+    "server": "196.216.xx.238",
     "port": 1433,
     "database": "akp_test",
     "username": "sa",
-    "password": "Md5189md5189@321#"
+    "password": "xxxxxxxxx"
 }
 
 PAGE_SIZE = 200
